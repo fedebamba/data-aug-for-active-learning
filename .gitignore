@@ -1,0 +1,5 @@
+# everything in res folder
+/res
+
+# every .csv
+*.csv
