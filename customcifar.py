@@ -15,20 +15,6 @@ class CustomCIFAR10(torchvision.datasets.CIFAR10):
                          target_transform=target_transform,
                          download=download)
 
-        if train:
-            self.indices = [x for x in range(len(self.train_data))]
-            if indices is not None:
-                self.indices = indices
-                self.train_data = self.train_data[indices]
-            else:
-                if not other and (percentage > 0.0):
-                    self.train_data = self.train_data[0: (min(len(self.train_data), math.ceil(percentage * len(self.train_data)) ))]
-                    self.indices = [x for x in range(len(self.train_data))]
-                if other and (percentage > 0.0):
-                    start = min(len(self.train_data), math.ceil(percentage * len(self.train_data)))
-                    self.train_data = self.train_data[start: len(self.train_data)]
-                    self.indices = [x for x in range(start, len(self.train_data) + start)]
-            print('Train data ' + str(len(self.train_data)))
 
     def __getitem__(self, index):
         (img, target) = super().__getitem__(index)
