@@ -48,7 +48,7 @@ class CompleteDataset:
 
         self.validation_indices = [el for xl in el_for_class for el in numpy.random.choice(xl, size=val_els_per_class, replace=False)]
         self.remaining_indices = [x for x in range(len(self.dataset)) if x not in self.validation_indices]
-        self.train_indices = numpy.random.choice(self.remaining_indices, size=int(len(self.remaining_indices)*initial_percentage), replace=False)
+        self.train_indices = numpy.random.choice(self.remaining_indices, size=int(len(self.remaining_indices)*initial_percentage  ), replace=False)
 
         print("Dataset loaded: train length {0}/{3} | validation length {1} | test length {2}".format(len(self.train_indices), len(self.validation_indices), len(self.testset), len(self.remaining_indices)))
 

@@ -78,6 +78,9 @@ class NetTrainer():
             return [el[1] for el in sorlist[:howmany]]
 
     def distance_and_varratio(self, ds, indices, howmany, train_indices, n=5):
+        distance_weight = 1
+        varratio_weight = 0
+
         self.net.eval()
         N = torch.Tensor().to("cuda:0")  # labelled
         S = torch.Tensor().to("cuda:0")  # unlabelled
@@ -139,9 +142,6 @@ class NetTrainer():
             print("NF : " + str(normalizing_factor))
 
             mindist_confidence =  (mindist / normalizing_factor) + normalized_confidence[0].to("cuda:0") # devo calcolare la confidenza ancora
-            print(mindist_confidence)
-            # errorlist = [[mindist[i].item(), normalized_confidence[1][i].item(), S[i]] for i in
-            #              range(len(normalized_confidence[0]))]
 
             erlist_indexes = normalized_confidence[1]
             new_N = []
@@ -162,7 +162,7 @@ class NetTrainer():
                 newdists = torch.sum(newdists * newdists, -1)
                 newdists = torch.sqrt(newdists)
                 mindist = torch.min(mindist, newdists)
-                mindist_confidence = (mindist / normalizing_factor) + normalized_confidence[0].to("cuda:0")
+                mindist_confidence = (distance_weight*(mindist / normalizing_factor)) + (varratio_weight * normalized_confidence[0].to("cuda:0"))
             return new_N
 
     def kl_divergence(self, ds, indices, howmany, train_indices, n=5):
