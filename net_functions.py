@@ -78,8 +78,8 @@ class NetTrainer():
             return [el[1] for el in sorlist[:howmany]]
 
     def distance_and_varratio(self, ds, indices, howmany, train_indices, n=5):
-        distance_weight = 1
-        varratio_weight = 0
+        distance_weight = 1e-5
+        varratio_weight = 1
 
         self.net.eval()
         N = torch.Tensor().to("cuda:0")  # labelled
@@ -120,7 +120,6 @@ class NetTrainer():
 
                 normalized_confidence[0] = torch.cat((normalized_confidence[0].cpu(), 1 - torch.Tensor(
                     acquisition_functions.confidence(predictions.transpose(0,1))).cpu() / n), 0).cpu()
-                print(normalized_confidence)
 
                 S = torch.cat((S, o), 0)
                 print("\r S: {0} ".format(S.size()), end="")
@@ -141,7 +140,7 @@ class NetTrainer():
             normalizing_factor = torch.max(mindist, -1)[0]
             print("NF : " + str(normalizing_factor))
 
-            mindist_confidence =  (mindist / normalizing_factor) + normalized_confidence[0].to("cuda:0") # devo calcolare la confidenza ancora
+            mindist_confidence = (distance_weight*(mindist / normalizing_factor)) + (varratio_weight * normalized_confidence[0].to("cuda:0")) # devo calcolare la confidenza ancora
 
             erlist_indexes = normalized_confidence[1]
             new_N = []
@@ -149,7 +148,7 @@ class NetTrainer():
             for i in range(howmany):
                 #  maxx = torch.max(mindist, -1)[1]
                 maxx = torch.max(mindist_confidence, -1)[1]
-                print("Max: {0:.3f} = {1:.3f} + {2:.3f}".format(mindist_confidence[maxx], mindist[maxx]/normalizing_factor, normalized_confidence[0][maxx]))
+                print("Max: {0:.3f} = ({1:.3f} * {3}) + ({2:.3f} * {4})".format(mindist_confidence[maxx], mindist[maxx]/normalizing_factor, normalized_confidence[0][maxx], distance_weight, varratio_weight))
 
                 if erlist_indexes[maxx].item() in new_N:
                     print("Error: Duplicate")
@@ -164,6 +163,108 @@ class NetTrainer():
                 mindist = torch.min(mindist, newdists)
                 mindist_confidence = (distance_weight*(mindist / normalizing_factor)) + (varratio_weight * normalized_confidence[0].to("cuda:0"))
             return new_N
+
+
+    def distance_and_entropy(self, ds, indices, howmany, train_indices, n=1):
+        distance_weight = 1
+        varratio_weight = 1
+
+        self.net.eval()
+        N = torch.Tensor().to("cuda:0")  # labelled
+        S = torch.Tensor().to("cuda:0")  # unlabelled
+        normalized_confidence = [torch.Tensor().to("cuda:0"), torch.Tensor().long()]
+
+        randomized_list = numpy.random.choice([x for x in indices], len(indices), replace=False)
+
+        trainloaders = [tud.DataLoader(ds._train_val_set, batch_size=500, shuffle=False, num_workers=4,
+                                       sampler=customcifar.CustomRandomSampler(train_indices)) for i in range(n)]
+        dataloaders = [tud.DataLoader(ds._train_val_set, batch_size=500, shuffle=False, num_workers=4,
+                                      sampler=customcifar.CustomSampler(randomized_list)) for i in range(n)]
+        with torch.no_grad():
+            for batch_index, element in enumerate(zip(*trainloaders)):  # labelled samples
+                els = [x for x in element]
+                o = torch.Tensor().to("cuda:0")
+                for input in els:
+                    input[0], input[1] = input[0].to("cuda:0"), input[1].to("cuda:0")
+                    o = torch.cat((o, self.net(input[0])[1].reshape(len(input[0]), 512, 1)), 2)
+                N = torch.cat((N, o), 0)
+                print("\r N: {0} ".format(N.size()), end="")
+            print("")
+
+            for batch_index, element in enumerate(zip(*dataloaders)):  # unlabelled samples
+                normalized_confidence[1] = torch.cat((normalized_confidence[1], element[0][2]), 0)
+
+                els = [x for x in element]
+                o = torch.Tensor().to("cuda:0")
+                predictions = torch.Tensor().long()
+
+                for input in els:
+                    input[0], input[1] = input[0].to("cuda:0"), input[1].to("cuda:0")
+                    output = self.net(input[0])
+                    out = output[1].reshape(len(input[0]), 512, 1)
+
+                    o = torch.cat((o, out), 2)
+                    predictions = torch.cat((predictions, acquisition_functions.entropy(output[0])), 1)
+
+                    print("Output : " + str(output[0].size()) + "  " + str(output[0]))
+                    print(predictions.size())
+
+                S = torch.cat((S, o), 0)
+                print("\r S: {0} ".format(S.size()), end="")
+            print("")
+            S = (torch.sum(S, 2)) / n
+            N = (torch.sum(N, 2)) / n
+
+            S_batches = torch.split(S, 25, dim =0)
+            dist_S_N = torch.Tensor()
+            for el in S_batches:
+                partial_dist = el.unsqueeze(1) - N.unsqueeze(0)
+                partial_dist = torch.sum(partial_dist * partial_dist, -1)
+                partial_dist = torch.sqrt(partial_dist)
+                dist_S_N = torch.cat((dist_S_N, partial_dist.cpu()), 0)
+
+            mindist = torch.min(dist_S_N, 1)[0].to("cuda:0")
+
+            normalizing_factor = torch.max(mindist, -1)[0]
+            print("NF : " + str(normalizing_factor))
+
+            mindist_confidence = (distance_weight*(mindist / normalizing_factor)) + (varratio_weight * normalized_confidence[0].to("cuda:0")) # devo calcolare la confidenza ancora
+
+            erlist_indexes = normalized_confidence[1]
+            new_N = []
+
+            for i in range(howmany):
+                #  maxx = torch.max(mindist, -1)[1]
+                maxx = torch.max(mindist_confidence, -1)[1]
+                print("Max: {0:.3f} = ({1:.3f} * {3}) + ({2:.3f} * {4})".format(mindist_confidence[maxx], mindist[maxx]/normalizing_factor, normalized_confidence[0][maxx], distance_weight, varratio_weight))
+
+                if erlist_indexes[maxx].item() in new_N:
+                    print("Error: Duplicate")
+
+                new_N.append(erlist_indexes[maxx].item())
+                mindist[maxx] = float("-inf")
+                mindist_confidence[maxx] = float("-inf")
+
+                newdists = S - S[maxx].reshape(1, len(S[maxx]))
+                newdists = torch.sum(newdists * newdists, -1)
+                newdists = torch.sqrt(newdists)
+                mindist = torch.min(mindist, newdists)
+                mindist_confidence = (distance_weight*(mindist / normalizing_factor)) + (varratio_weight * normalized_confidence[0].to("cuda:0"))
+            return new_N
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     def kl_divergence(self, ds, indices, howmany, train_indices, n=5):
         self.net.eval()

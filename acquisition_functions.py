@@ -6,8 +6,9 @@ import numpy
 
 def entropy(net_out):
     sm = F.softmax(net_out)
-    logsm = numpy.log2(sm)
-    return -numpy.multiply(sm.cpu().numpy(), logsm.cpu().numpy()).sum()
+    logsm = T.log(sm)
+    print(logsm.size())
+    return T.sum(sm * logsm, 1)
 
 
 def avg_entropy(net_out):
@@ -20,9 +21,15 @@ def avg_entropy(net_out):
     return e/len(net_out)
 
 
-def confidence(vector, num_of_classes=10):
-    res =  [max([(len([i[v] for i in vector if i[v] == j])) for j in range(num_of_classes)]) for v in range(len(vector[0]))]
-    return res
+def confidence(vector, num_of_classes=10, details=False):
+    if not details:
+        return [max([(len([i[v] for i in vector if i[v] == j])) for j in range(num_of_classes)]) for v in range(len(vector[0]))]
+    else:
+        res = [[(len([i[v] for i in vector if i[v] == j])) for j in range(num_of_classes)] for v in range(len(vector[0]))]
+        print(res)
+        return res
+
+
 
 def avg_KL_divergence():
     pass
